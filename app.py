@@ -6,27 +6,24 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score,
-    f1_score, confusion_matrix, classification_report
+    accuracy_score, precision_score, recall_score, f1_score,
+    confusion_matrix, classification_report
 )
 import plotly.express as px
 
 
-# =======================================================
-# PAGE CONFIGURATION
-# =======================================================
+# =========================================================
+# PAGE HEADER
+# =========================================================
 st.set_page_config(
     page_title="FINAL PROJECT - IRIS SPECIES CLASSIFICATION",
     layout="wide"
 )
 
 st.title("FINAL PROJECT – IRIS SPECIES CLASSIFICATION")
-
-st.markdown("""
-This project builds a machine learning model to classify Iris flower species 
-based on four numerical measurements.  
-The application includes dataset exploration, model training, performance evaluation, 
-and real-time predictions using user-provided values.
+st.write("""
+This dashboard presents a complete machine learning workflow for classifying Iris flower species.
+It includes model performance metrics, an interactive prediction panel, and visual tools to explore the dataset.
 """)
 
 st.markdown("---")
@@ -34,167 +31,162 @@ st.markdown("**Developed by:** Elis García · Neris Pacheco")
 st.markdown("---")
 
 
-# =======================================================
-# DATA LOADING FUNCTION
-# =======================================================
+# =========================================================
+# DATA LOADING
+# =========================================================
 @st.cache_data
-def load_dataset():
-    iris_raw = load_iris(as_frame=True)
-    df = iris_raw.frame.copy()
+def load_data():
+    iris = load_iris(as_frame=True)
+    df = iris.frame.copy()
     df.columns = ["SepalLength", "SepalWidth", "PetalLength", "PetalWidth", "Target"]
-    df["Species"] = df["Target"].map({i: name for i, name in enumerate(iris_raw.target_names)})
-    return df, iris_raw
+    df["Species"] = df["Target"].map({i: name for i, name in enumerate(iris.target_names)})
+    return df, iris
 
-dataset, iris_info = load_dataset()
-
-
-# =======================================================
-# SIDEBAR CONFIGURATION PANEL
-# =======================================================
-st.sidebar.header("Model Parameters")
-
-test_fraction = st.sidebar.select_slider(
-    "Test Set Fraction",
-    options=[0.10, 0.15, 0.20, 0.25, 0.30, 0.35],
-    value=0.25
-)
-
-random_seed = st.sidebar.number_input("Random Seed", min_value=0, value=42)
-
-num_trees = st.sidebar.slider("Number of Trees", 20, 350, 150, 10)
-max_depth = st.sidebar.slider("Maximum Depth (0 = Unlimited)", 0, 40, 0)
-
-st.sidebar.markdown("---")
-st.sidebar.header("User Input for Prediction")
-
-u_sl = st.sidebar.number_input("Sepal Length", min_value=0.0, value=5.0)
-u_sw = st.sidebar.number_input("Sepal Width", min_value=0.0, value=3.2)
-u_pl = st.sidebar.number_input("Petal Length", min_value=0.0, value=4.3)
-u_pw = st.sidebar.number_input("Petal Width", min_value=0.0, value=1.3)
-
-user_sample = np.array([[u_sl, u_sw, u_pl, u_pw]])
+df, iris_info = load_data()
 
 
-# =======================================================
-# PREPROCESSING
-# =======================================================
-X = dataset[["SepalLength", "SepalWidth", "PetalLength", "PetalWidth"]]
-y = dataset["Target"]
+# =========================================================
+# MODEL TRAINING (fixed to avoid user breaking logic)
+# =========================================================
+X = df[["SepalLength", "SepalWidth", "PetalLength", "PetalWidth"]]
+y = df["Target"]
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=test_fraction, random_state=random_seed, stratify=y
+    X, y, test_size=0.25, random_state=12, stratify=y
 )
 
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
-user_scaled = scaler.transform(user_sample)
+
+model = RandomForestClassifier(n_estimators=180, max_depth=None, random_state=12)
+model.fit(X_train_scaled, y_train)
+pred_test = model.predict(X_test_scaled)
 
 
-# =======================================================
-# MODEL TRAINING
-# =======================================================
-rf = RandomForestClassifier(
-    n_estimators=num_trees,
-    max_depth=None if max_depth == 0 else max_depth,
-    random_state=random_seed
+# =========================================================
+# SECTION 1 — MODEL METRICS
+# =========================================================
+st.header("1. Model Performance Metrics")
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("Accuracy", f"{accuracy_score(y_test, pred_test):.3f}")
+col2.metric("Precision", f"{precision_score(y_test, pred_test, average='weighted'):.3f}")
+col3.metric("Recall", f"{recall_score(y_test, pred_test, average='weighted'):.3f}")
+col4.metric("F1 Score", f"{f1_score(y_test, pred_test, average='weighted'):.3f}")
+
+st.subheader("Classification Report")
+st.text(classification_report(y_test, pred_test, target_names=iris_info.target_names))
+
+st.subheader("Confusion Matrix")
+cm = confusion_matrix(y_test, pred_test)
+fig_cm = px.imshow(
+    cm,
+    text_auto=True,
+    labels={"x": "Predicted", "y": "Actual"},
+    x=iris_info.target_names,
+    y=iris_info.target_names
 )
-
-rf.fit(X_train_scaled, y_train)
-test_predictions = rf.predict(X_test_scaled)
-
-
-# =======================================================
-# PERFORMANCE METRICS
-# =======================================================
-colA, colB = st.columns([1.2, 1])
-
-with colA:
-    st.subheader("Model Performance")
-
-    st.write(f"**Accuracy:** {accuracy_score(y_test, test_predictions):.3f}")
-    st.write(f"**Precision (weighted):** {precision_score(y_test, test_predictions, average='weighted'):.3f}")
-    st.write(f"**Recall (weighted):** {recall_score(y_test, test_predictions, average='weighted'):.3f}")
-    st.write(f"**F1-score (weighted):** {f1_score(y_test, test_predictions, average='weighted'):.3f}")
-
-    st.markdown("### Classification Report")
-    st.text(classification_report(y_test, test_predictions, target_names=iris_info.target_names))
-
-    st.markdown("### Confusion Matrix")
-    cm = confusion_matrix(y_test, test_predictions)
-    fig_cm = px.imshow(
-        cm,
-        text_auto=True,
-        labels={"x": "Predicted", "y": "True"},
-        x=iris_info.target_names,
-        y=iris_info.target_names
-    )
-    st.plotly_chart(fig_cm, use_container_width=True)
-
-
-with colB:
-    st.subheader("Dataset Preview")
-    st.dataframe(dataset.head())
-
-    st.subheader("Scatter Matrix")
-    matrix_fig = px.scatter_matrix(
-        dataset,
-        dimensions=["SepalLength", "SepalWidth", "PetalLength", "PetalWidth"],
-        color="Species"
-    )
-    st.plotly_chart(matrix_fig, use_container_width=True)
-
-
-# =======================================================
-# USER PREDICTION SECTION
-# =======================================================
-st.subheader("Prediction for User Input")
-
-predicted_label = rf.predict(user_scaled)[0]
-prediction_probabilities = rf.predict_proba(user_scaled)[0]
-
-st.write(f"**Predicted Species:** {iris_info.target_names[predicted_label]}")
-
-prob_df = pd.DataFrame({
-    "Species": iris_info.target_names,
-    "Probability": prediction_probabilities
-})
-
-st.dataframe(prob_df)
-
-
-# =======================================================
-# 3D SCATTER PLOT WITH USER SAMPLE
-# =======================================================
-visual_data = dataset.copy()
-visual_data["PointType"] = "Dataset"
-
-user_row = {
-    "SepalLength": u_sl,
-    "SepalWidth": u_sw,
-    "PetalLength": u_pl,
-    "PetalWidth": u_pw,
-    "Species": iris_info.target_names[predicted_label],
-    "PointType": "User"
-}
-
-visual_data = pd.concat([visual_data, pd.DataFrame([user_row])], ignore_index=True)
-
-fig3d = px.scatter_3d(
-    visual_data,
-    x="PetalLength",
-    y="PetalWidth",
-    z="SepalLength",
-    color="Species",
-    symbol="PointType",
-    size=[12 if pt == "User" else 6 for pt in visual_data["PointType"]]
-)
-
-fig3d.update_layout(height=550)
-
-st.subheader("3D Visualization: User Sample Within the Dataset")
-st.plotly_chart(fig3d, use_container_width=True)
-
+st.plotly_chart(fig_cm, use_container_width=True)
 
 st.markdown("---")
-st.markdown("**Developed by:** Elis García · Neris Pacheco")
+
+
+# =========================================================
+# SECTION 2 — USER INPUT + PREDICTION + 3D PLOT
+# =========================================================
+st.header("2. Interactive Prediction Panel")
+
+st.write("""
+Enter sepal and petal measurements below.  
+The model will classify the flower and display its position relative to the dataset in a 3D plot.
+""")
+
+colA, colB = st.columns(2)
+
+with colA:
+    st.subheader("Enter Flower Measurements")
+
+    u_sl = st.number_input("Sepal Length (cm)", min_value=0.0, value=5.1)
+    u_sw = st.number_input("Sepal Width (cm)", min_value=0.0, value=3.5)
+    u_pl = st.number_input("Petal Length (cm)", min_value=0.0, value=1.4)
+    u_pw = st.number_input("Petal Width (cm)", min_value=0.0, value=0.3)
+
+    user_sample = np.array([[u_sl, u_sw, u_pl, u_pw]])
+    user_scaled = scaler.transform(user_sample)
+
+    pred_label = model.predict(user_scaled)[0]
+    pred_probs = model.predict_proba(user_scaled)[0]
+    species_name = iris_info.target_names[pred_label]
+
+    st.subheader("Prediction Result")
+    st.write(f"**Predicted Species:** {species_name}")
+
+    st.write("Prediction Probabilities:")
+    st.dataframe(pd.DataFrame({
+        "Species": iris_info.target_names,
+        "Probability": pred_probs
+    }))
+
+with colB:
+    st.subheader("3D Visualization of Prediction")
+
+    plot_df = df.copy()
+    plot_df["PointType"] = "Dataset"
+
+    new_point = {
+        "SepalLength": u_sl,
+        "SepalWidth": u_sw,
+        "PetalLength": u_pl,
+        "PetalWidth": u_pw,
+        "Species": species_name,
+        "PointType": "User"
+    }
+
+    plot_df = pd.concat([plot_df, pd.DataFrame([new_point])], ignore_index=True)
+
+    fig3d = px.scatter_3d(
+        plot_df,
+        x="PetalLength",
+        y="PetalWidth",
+        z="SepalLength",
+        color="Species",
+        symbol="PointType",
+        size=[12 if t == "User" else 5 for t in plot_df["PointType"]]
+    )
+
+    fig3d.update_layout(height=550)
+    st.plotly_chart(fig3d, use_container_width=True)
+
+st.markdown("---")
+
+
+# =========================================================
+# SECTION 3 — ADDITIONAL DATA VISUALIZATIONS
+# =========================================================
+st.header("3. Dataset Visual Exploration")
+
+st.subheader("Histogram Distributions")
+hist_cols = st.multiselect(
+    "Select features to visualize:",
+    ["SepalLength", "SepalWidth", "PetalLength", "PetalWidth"],
+    default=["SepalLength", "PetalLength"]
+)
+
+if hist_cols:
+    for col in hist_cols:
+        st.write(f"**Histogram of {col}**")
+        fig_hist = px.histogram(df, x=col, color="Species", nbins=20)
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+st.subheader("Scatter Matrix")
+scatter_fig = px.scatter_matrix(
+    df,
+    dimensions=["SepalLength", "SepalWidth", "PetalLength", "PetalWidth"],
+    color="Species"
+)
+st.plotly_chart(scatter_fig, use_container_width=True)
+
+st.markdown("---")
+st.markdown("**Developed by: Elis García · Neris Pacheco**")
